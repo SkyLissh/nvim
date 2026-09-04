@@ -18,6 +18,8 @@ return {
         n_completions = 1,
         add_single_line_entry = true,
 
+        notify = "debug",
+
         virtualtext = {
           -- Allowlist: default { "*" } fires in markdown/gitcommit/.fvmrc,
           -- which is pure waste. Add backends as needed.
@@ -43,6 +45,11 @@ return {
         },
 
         provider_options = {
+          system = "see [Prompt] section for the default value",
+          few_shots = "see [Prompt] section for the default value",
+          chat_input = "See [Prompt Section for default value]",
+          stream = true,
+
           openai_compatible = {
             api_key = "OPENCODE_GO_API_KEY", -- env var NAME, not the value
             end_point = "https://opencode.ai/zen/go/v1/chat/completions",
@@ -52,6 +59,7 @@ return {
               max_tokens = 256, -- 56 = the cost-optimized default; raise if too timid
               top_p = 0.9,
               thinking = { type = "disabled" }, -- not optional: reasoning = 1st-token lag
+              reasoning_effort = "none",
             },
           },
         },
