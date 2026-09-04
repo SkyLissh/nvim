@@ -22,6 +22,10 @@ return {
         root_patterns = { ".git", "pubspec.yaml" },
         debugger = { enabled = true }, -- needs lazyvim's dap.core extra
         widget_guides = { enabled = true },
+        -- no auto right-side "flutter logs" window: it duplicates what already
+        -- shows in the dap-ui console/repl on every :FlutterRun (debugger runner).
+        -- Re-enable if you run flutter without the debugger (logs only go there).
+        dev_log = { enabled = false },
         lsp = {
           settings = {
             showTodos = true,
@@ -29,6 +33,61 @@ return {
             renameFilesWithClasses = "always",
           },
         },
+      })
+
+      -- Register the dart adapter + launch configs for the plain DAP flow
+      -- (<leader>dc / :lua require('dap').continue()) once nvim-dap loads.
+      -- Mirrors what flutter-tools only registers at :FlutterRun time.
+      -- Resolves the same paths as flutter-tools (fvm-aware).
+      vim.api.nvim_create_autocmd("User", {
+        pattern = "LazyLoad",
+        callback = function(event)
+          if event.data ~= "nvim-dap" then
+            return
+          end
+          local dap = require("dap")
+          require("flutter-tools.executable").get(function(paths)
+            -- outside a flutter project / without an SDK, nothing to register
+            if not paths or not paths.flutter_bin then
+              return
+            end
+            dap.adapters.dart = {
+              type = "executable",
+              command = paths.flutter_bin,
+              args = { "debug-adapter" },
+            }
+            dap.configurations.dart = {
+              {
+                type = "dart",
+                request = "launch",
+                name = "Launch flutter",
+                dartSdkPath = paths.dart_sdk,
+                flutterSdkPath = paths.flutter_sdk,
+                program = "lib/main.dart",
+              },
+              {
+                type = "dart",
+                request = "attach",
+                name = "Connect flutter",
+                dartSdkPath = paths.dart_sdk,
+                flutterSdkPath = paths.flutter_sdk,
+                program = "lib/main.dart",
+              },
+            }
+            -- hot reload/restart from the debug console (repl)
+            local repl = require("dap.repl")
+            repl.commands = vim.tbl_extend("force", repl.commands, {
+              custom_commands = {
+                [".hot-reload"] = function()
+                  dap.session():request("hotReload")
+                end,
+                [".hot-restart"] = function()
+                  dap.session():request("hotRestart")
+                end,
+              },
+            })
+          end)
+        end,
       })
     end,
   },
