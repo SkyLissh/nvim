@@ -18,8 +18,6 @@ return {
         n_completions = 1,
         add_single_line_entry = true,
 
-        notify = "debug",
-
         virtualtext = {
           -- Allowlist: default { "*" } fires in markdown/gitcommit/.fvmrc,
           -- which is pure waste. Add backends as needed.
