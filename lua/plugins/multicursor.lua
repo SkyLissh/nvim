@@ -42,16 +42,79 @@ return {
     keys = {
       { "<leader>mc", group = "multi-cursor" }, -- which-key group label
       -- add cursors (normal + visual)
-      { "<A-J>", function() require("multicursor-nvim").lineAddCursor(-1) end, desc = "Add cursor above", mode = { "n", "x" } },
-      { "<A-K>", function() require("multicursor-nvim").lineAddCursor(1) end, desc = "Add cursor below", mode = { "n", "x" } },
+      {
+        "<A-J>",
+        function()
+          require("multicursor-nvim").lineAddCursor(-1)
+        end,
+        desc = "Add cursor above",
+        mode = { "n", "x" },
+      },
+      {
+        "<A-K>",
+        function()
+          require("multicursor-nvim").lineAddCursor(1)
+        end,
+        desc = "Add cursor below",
+        mode = { "n", "x" },
+      },
       -- match word/selection
-      { "<leader>mcn", function() require("multicursor-nvim").matchAddCursor(1) end, desc = "Add next match", mode = { "n", "x" } },
-      { "<leader>mcp", function() require("multicursor-nvim").matchAddCursor(-1) end, desc = "Add prev match", mode = { "n", "x" } },
-      { "<leader>mca", function() require("multicursor-nvim").matchAllAddCursors() end, desc = "Add all matches", mode = { "n", "x" } },
-      { "<leader>mcs", function() require("multicursor-nvim").matchSkipCursor(1) end, desc = "Skip next match", mode = { "n", "x" } },
-      { "<leader>mcS", function() require("multicursor-nvim").matchSkipCursor(-1) end, desc = "Skip prev match", mode = { "n", "x" } },
-      { "<leader>mcl", function() require("multicursor-nvim").clearCursors() end, desc = "Clear cursors", mode = { "n", "x" } },
-      { "<leader>mct", function() require("multicursor-nvim").toggleCursor() end, desc = "Toggle cursors", mode = { "n", "x" } },
+      {
+        "<leader>mcn",
+        function()
+          require("multicursor-nvim").matchAddCursor(1)
+        end,
+        desc = "Add next match",
+        mode = { "n", "x" },
+      },
+      {
+        "<leader>mcp",
+        function()
+          require("multicursor-nvim").matchAddCursor(-1)
+        end,
+        desc = "Add prev match",
+        mode = { "n", "x" },
+      },
+      {
+        "<leader>mca",
+        function()
+          require("multicursor-nvim").matchAllAddCursors()
+        end,
+        desc = "Add all matches",
+        mode = { "n", "x" },
+      },
+      {
+        "<leader>mcs",
+        function()
+          require("multicursor-nvim").matchSkipCursor(1)
+        end,
+        desc = "Skip next match",
+        mode = { "n", "x" },
+      },
+      {
+        "<leader>mcS",
+        function()
+          require("multicursor-nvim").matchSkipCursor(-1)
+        end,
+        desc = "Skip prev match",
+        mode = { "n", "x" },
+      },
+      {
+        "<leader>mcl",
+        function()
+          require("multicursor-nvim").clearCursors()
+        end,
+        desc = "Clear cursors",
+        mode = { "n", "x" },
+      },
+      {
+        "<leader>mct",
+        function()
+          require("multicursor-nvim").toggleCursor()
+        end,
+        desc = "Toggle cursors",
+        mode = { "n", "x" },
+      },
     },
   },
 }
