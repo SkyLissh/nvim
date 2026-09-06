@@ -4,34 +4,28 @@ return {
     config = function()
       ---@cast opts minuet.Config
       require("minuet").setup({
-        provider = "openai_compatible",
+        provider = "openai_fim_compatible",
+
+        -- 3 parallel requests = 3x identical GPU generation per trigger
+        -- (and up to ~3s wall on the 7B). 1 cuts GPU-seconds ~3x.
+        n_completions = 1,
 
         -- NOTE: chars, not tokens. Default 16000. Input dominates cost +
         -- latency on a chat endpoint, so this is the real budget knob.
-        context_window = 20000,
+        context_window = 8000,
         context_ratio = 0.75,
 
         request_timeout = 2.5,
         throttle = 1200, -- min interval while typing; the knob that binds
         debounce = 450, -- general floor; largely redundant under throttle
 
-        n_completions = 1,
         add_single_line_entry = true,
 
+        notify = "debug",
+
         virtualtext = {
-          -- Allowlist: default { "*" } fires in markdown/gitcommit/.fvmrc,
-          -- which is pure waste. Add backends as needed.
-          auto_trigger_ft = {
-            "dart",
-            "rust",
-            "go",
-            "lua",
-            "typescript",
-            "typescriptreact",
-            "svelte",
-            "html",
-            "css",
-          },
+          auto_trigger_ft = { "*" },
+          show_on_completion_menu = true,
           keymap = {
             accept = "<A-a>",
             accept_line = "<A-l>",
@@ -43,21 +37,17 @@ return {
         },
 
         provider_options = {
-          system = "see [Prompt] section for the default value",
-          few_shots = "see [Prompt] section for the default value",
-          chat_input = "See [Prompt Section for default value]",
-          stream = true,
-
-          openai_compatible = {
-            api_key = "OPENCODE_GO_API_KEY", -- env var NAME, not the value
-            end_point = "https://opencode.ai/zen/go/v1/chat/completions",
-            model = "deepseek-v4-flash",
-            name = "Opencode",
+          openai_fim_compatible = {
+            api_key = "TERM", -- env var NAME, not the value
+            end_point = "http://localhost:11434/v1/completions",
+            model = "qwen2.5-coder:7b-base",
+            name = "Ollama",
             optional = {
-              max_tokens = 256, -- 56 = the cost-optimized default; raise if too timid
+              -- 256 = max GPU burn per request; 128 halves it while still
+              -- covering most single-line/multi-line inline completions.
+              -- Raise only if completions feel timid.
+              max_tokens = 128,
               top_p = 0.9,
-              thinking = { type = "disabled" }, -- not optional: reasoning = 1st-token lag
-              reasoning_effort = "none",
             },
           },
         },

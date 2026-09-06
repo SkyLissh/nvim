@@ -2,11 +2,13 @@
 -- Swap `dir` for a git URL once the theme is published.
 return {
   {
-    dir = "~/Development/lotus.nvim",
-    name = "lotus",
-    lazy = false, -- on the rtp before LazyVim applies the colorscheme
+
+    "SkyLissh/lotus.nvim",
+    lazy = false,
     priority = 1000,
-    opts = { style = "dark" }, -- auto-calls require("lotus").setup(opts)
+    opts = {
+      style = "dark",
+    },
   },
   {
     "LazyVim/LazyVim",
