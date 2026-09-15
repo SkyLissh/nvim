@@ -6,18 +6,38 @@ return {
       require("minuet").setup({
         provider = "openai_fim_compatible",
 
-        -- 3 parallel requests = 3x identical GPU generation per trigger
-        -- (and up to ~3s wall on the 7B). 1 cuts GPU-seconds ~3x.
+        -- Gate ALL auto-triggers behind a real buffer check. auto_trigger_ft = "*"
+        -- matches every FileType event, including prompt buffers (picker search,
+        -- grep input, explorer rename/new-file, snacks input: buftype=prompt) and
+        -- terminals, and minuet's virtualtext path only checks an ft flag by
+        -- default — no buftype guard. Cheap check, runs before every request.
+        -- Manual <A-y> still works: blink/cmp bypass predicates for manual
+        -- triggers (blink.lua: `not_manual_completion`).
+        enable_predicates = {
+          function()
+            return vim.bo.buftype == "" and vim.bo.modifiable
+          end,
+        },
+
+        -- 1 request per trigger (3 would triple GPU-seconds); more would
+        -- just duplicate the same FIM generation on a local 7B.
         n_completions = 1,
 
-        -- NOTE: chars, not tokens. Default 16000. Input dominates cost +
-        -- latency on a chat endpoint, so this is the real budget knob.
-        context_window = 8000,
+        -- chars, not tokens. Ollama prefills the WHOLE window on every
+        -- request, so this is the biggest per-request GPU-spike knob.
+        -- 2048 chars ~= 500 tokens: enough for local scope + neighbours
+        -- on the 7B; was 8000 (~2000 tok prefill = a long 100% GPU grind).
+        context_window = 2048,
         context_ratio = 0.75,
 
         request_timeout = 2.5,
-        throttle = 1200, -- min interval while typing; the knob that binds
-        debounce = 450, -- general floor; largely redundant under throttle
+        -- Two gates, applied in order: debounce (idle ms after last
+        -- keystroke) then throttle (min gap between fired requests).
+        -- Raised so we only ask after a genuine pause, and never refire
+        -- while you're still typing. Continuous typing now fires nothing;
+        -- a stop to think fires one request, then it stays quiet for 3s.
+        debounce = 800,
+        throttle = 3000,
 
         add_single_line_entry = true,
 
@@ -25,6 +45,25 @@ return {
 
         virtualtext = {
           auto_trigger_ft = { "*" },
+          -- Non-code buffers: a prose-writing base model burns GPU cycles to
+          -- emit junk. Skip markdown, commits, help, file-manager, etc.
+          -- Manual completion (MinuetBlink/C-m or <A-y> blink source) still
+          -- works there.
+          auto_trigger_ignore_ft = {
+            "markdown",
+            "text",
+            "gitcommit",
+            "help",
+            "man",
+            "oil",
+            "qf",
+            "checkhealth",
+            "NvimTree",
+            "neo-tree",
+            "avante",
+            "dashboard",
+            "alpha",
+          },
           show_on_completion_menu = true,
           keymap = {
             accept = "<A-a>",
