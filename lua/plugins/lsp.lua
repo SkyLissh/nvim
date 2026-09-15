@@ -1,9 +1,10 @@
-local inlay_hint = require("vim.lsp.inlay_hint")
 return {
   {
     "neovim/nvim-lspconfig",
     opts = {
-      inlay_hint = {
+      -- LazyVim's own option (not a lspconfig one): disables its
+      -- textDocument/inlayHint auto-enable handler, so hints default to off.
+      inlay_hints = {
         enabled = false,
       },
     },
