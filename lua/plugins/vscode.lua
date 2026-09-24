@@ -99,4 +99,7 @@ vim.api.nvim_create_autocmd("User", {
 -- LazyVim `vscode` extra does not disable it, unlike picker/notifier/etc.)
 return {
   { "folke/snacks.nvim", opts = { explorer = { enabled = false } } },
+  -- vscode-neovim's cursor sync can't keep up with mini.animate's cursor
+  -- events (held j/k lags/jitters); animate only in real nvim
+  { "echasnovski/mini.animate", enabled = function() return not vim.g.vscode end },
 }
