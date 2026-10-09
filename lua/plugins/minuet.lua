@@ -41,8 +41,6 @@ return {
 
         add_single_line_entry = true,
 
-        notify = "debug",
-
         virtualtext = {
           auto_trigger_ft = { "*" },
           -- Non-code buffers: a prose-writing base model burns GPU cycles to
@@ -65,6 +63,7 @@ return {
             "alpha",
           },
           show_on_completion_menu = true,
+
           keymap = {
             accept = "<A-a>",
             accept_line = "<A-l>",
@@ -77,9 +76,11 @@ return {
 
         provider_options = {
           openai_fim_compatible = {
-            api_key = "TERM", -- env var NAME, not the value
+            api_key = function()
+              return "ollama"
+            end,
             end_point = "http://localhost:11434/v1/completions",
-            model = "qwen2.5-coder:7b-base",
+            model = "qwen2.5-coder:7b",
             name = "Ollama",
             optional = {
               -- 256 = max GPU burn per request; 128 halves it while still
