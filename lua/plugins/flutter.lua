@@ -89,6 +89,88 @@ return {
           end)
         end,
       })
+
+      -- dart format (conform) only normalizes whitespace. Import ordering is
+      -- the LSP "Organize Imports" action (source.organizeImports) and quote /
+      -- const fixes are lint fixes from `dart fix` -- neither is the formatter,
+      -- so wire them up separately (what VS Code's Dart extension does on save).
+
+      -- Mirror the conform resolver: project FVM SDK, then FVM global default,
+      -- then whatever `dart` is on PATH.
+      local function dart_bin()
+        local root = vim.fs.root(0, { ".fvm", "pubspec.yaml" })
+        local sdk = root and vim.fs.joinpath(root, ".fvm", "flutter_sdk")
+        if sdk and vim.fn.executable(sdk .. "/bin/dart") == 1 then
+          return sdk .. "/bin/dart"
+        end
+        local fvm = vim.env.FVM_HOME or vim.fs.joinpath(vim.env.HOME, "fvm")
+        for _, c in ipairs({
+          vim.fs.joinpath(fvm, "default", "bin", "dart"),
+          vim.fs.joinpath(fvm, "versions", "default", "bin", "dart"),
+        }) do
+          if vim.fn.executable(c) == 1 then
+            return c
+          end
+        end
+        return "dart"
+      end
+
+      -- Code cleanup on save: the same source actions VS Code's Dart
+      -- extension runs via `editor.codeActionsOnSave` --
+      --   source.fixAll          -> edit.fixAll                (lint fixes)
+      --   source.organizeImports -> dart.edit.organizeImports (sort/remove imports)
+      -- Both are server commands whose edits land asynchronously, so this runs
+      -- after the write and writes once more if the buffer changed (guarded).
+      local dart_saving = {}
+
+      -- Lint fixes run through the CLI (`dart fix --apply`), which is exactly
+      -- what VS Code's Fix All applies. Scoped to the saved file only, and run
+      -- async so the analyzer spin-up never blocks the UI.
+      local function dart_code_cleanup(buf, file)
+        local root = vim.fs.root(buf, { "pubspec.yaml" }) or vim.fn.getcwd()
+        vim.system({ dart_bin(), "fix", "--apply", file }, { cwd = root, text = true }, function(res)
+          vim.schedule(function()
+            if res.code ~= 0 then
+              vim.notify("dart fix failed:\n" .. (res.stdout or ""), vim.log.levels.ERROR)
+              return
+            end
+            -- pull the lint fixes back into the buffer when the file changed
+            if (res.stdout or ""):match("%d+ fixes? made") then
+              vim.cmd("checktime")
+            end
+            -- organize imports via dartls (sorts + drops unused imports)
+            pcall(vim.lsp.buf.code_action, {
+              context = { only = { "source.organizeImports" }, diagnostics = {} },
+              apply = true,
+              bufnr = buf,
+            })
+          end)
+        end)
+      end
+
+      vim.api.nvim_create_autocmd("BufWritePost", {
+        group = vim.api.nvim_create_augroup("user-dart", { clear = true }),
+        pattern = "*.dart",
+        callback = function(args)
+          if vim.bo[args.buf].buftype ~= "" then
+            return
+          end
+          if dart_saving[args.buf] then
+            dart_saving[args.buf] = nil
+            return
+          end
+          pcall(dart_code_cleanup, args.buf, args.file)
+          vim.defer_fn(function()
+            if vim.api.nvim_buf_is_valid(args.buf) and vim.bo[args.buf].modified then
+              dart_saving[args.buf] = true
+              vim.api.nvim_buf_call(args.buf, function()
+                vim.cmd("silent! write")
+              end)
+            end
+          end, 1200)
+        end,
+      })
+
     end,
   },
 
