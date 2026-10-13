@@ -5,6 +5,22 @@
 local opt = vim.opt
 opt.wrap = true
 
+-- Flutter ARB (l10n) files are JSON: own `arb` filetype so the json
+-- treesitter parser and jsonls can be attached to it (see lsp.lua).
+-- Set here, not in autocmds.lua, so files opened at startup are detected.
+vim.filetype.add({
+  extension = {
+    arb = "arb",
+  },
+})
+vim.treesitter.language.register("json", "arb")
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "arb",
+  callback = function()
+    vim.opt_local.conceallevel = 0 -- same as LazyVim's json fix: show the quotes
+  end,
+})
+
 -- Neovide: the font comes from ~/.config/neovide/config.toml, but scale and
 -- line spacing are nvim-side options only (no config.toml equivalent).
 if vim.g.neovide then

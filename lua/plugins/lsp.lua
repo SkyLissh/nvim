@@ -7,6 +7,11 @@ return {
       inlay_hints = {
         enabled = false,
       },
+      servers = {
+        jsonls = {
+          filetypes = { "json", "jsonc", "json5", "arb" },
+        },
+      },
     },
   },
 }
