@@ -90,53 +90,98 @@ return {
         end,
       })
 
-      -- "Warm server" cleanup on save: instead of spawning `dart fix` (a fresh
-      -- analyzer process per save -> slow, plus external disk writes that trip
-      -- Neovim's "file changed on disk" reload prompt), reuse the already
-      -- running dartls through LSP. Same source actions as VS Code's Dart
-      -- extension `editor.codeActionsOnSave`:
-      --   source.fixAll          -> lint fixes (the same set as `dart fix`)
-      --   source.organizeImports -> sort / remove imports
-      -- dartls answers with a server command whose edits land asynchronously
-      -- on the BUFFER (never the disk); Neovim persists them with a guarded
-      -- follow-up write. Actions are chained one per save cycle: requesting
-      -- both at once makes the server compute the second edit against stale
-      -- offsets, which corrupts text.
+      -- Fix-on-save: on every user save of a *.dart buffer with dartls
+      -- attached, request the `source.fixAll` code action (the same fixes as
+      -- `dart fix`, and VS Code's source.fixAll on-save action).
+      --
+      -- dartls applies its fixes asynchronously through workspace/applyEdit,
+      -- so the follow-up write only happens once a server edit has actually
+      -- landed on the buffer (tracked by wrapping that handler) -- never on a
+      -- timer, and never just because the buffer happens to be modified.
+      -- The internal write re-enters BufWritePre, where LazyVim formats the
+      -- fixed buffer through dartls (see section 3 below).
+      --
+      -- Generated files (*.g.dart, *.freezed.dart, ...) skip the fix step:
+      -- build_runner regenerates them, so fixing them only churns diffs.
+      -- They are still formatted when saved, since format-on-save is not
+      -- filtered here.
 
-      local dart_state = {} ---@type table<number, string|nil>
+      local FIX_POLL_MS, FIX_ATTEMPTS = 100, 20
+      local fix_landed = {} ---@type table<number, number> bufnr -> time of last applied server edit
+      local internal_write = {} ---@type table<number, boolean>
+      local pending = {} ---@type table<number, boolean>
+
+      -- track when the server applies an edit to a buffer, so the follow-up
+      -- write is driven by real edits and not by a timer
+      local orig_apply_edit = vim.lsp.handlers["workspace/applyEdit"]
+      vim.lsp.handlers["workspace/applyEdit"] = function(err, params, ctx, config)
+        if params and params.edit then
+          local uris = {}
+          local edit = params.edit
+          if edit.documentChanges then
+            for _, dc in ipairs(edit.documentChanges) do
+              if dc.textDocument then
+                uris[#uris + 1] = dc.textDocument.uri
+              end
+            end
+          elseif edit.changes then
+            for uri in pairs(edit.changes) do
+              uris[#uris + 1] = uri
+            end
+          end
+          for _, uri in ipairs(uris) do
+            fix_landed[vim.uri_to_bufnr(uri)] = vim.uv.now()
+          end
+        end
+        return orig_apply_edit(err, params, ctx, config)
+      end
+
+      local function is_generated(path)
+        return path:match("%.g%.dart$")
+          or path:match("%.freezed%.dart$")
+          or path:match("%.gr%.dart$")
+          or path:match("%.mocks%.dart$")
+          or path:match("%.config%.dart$")
+          or path:match("%.chopper%.dart$")
+      end
 
       local function dartls_attached(buf)
         return not vim.tbl_isempty(vim.lsp.get_clients({ bufnr = buf, name = "dartls" }))
       end
 
-      local function dart_action(buf, kinds)
-        pcall(vim.lsp.buf.code_action, {
-          context = { only = kinds, diagnostics = {} },
+      local function request_fix_all(buf)
+        pending[buf] = true
+        local requested_at = vim.uv.now()
+        vim.lsp.buf.code_action({
+          context = { only = { "source.fixAll" }, diagnostics = {} },
           apply = true,
           bufnr = buf,
         })
-      end
-
-      -- The server applies its edits asynchronously; poll briefly and write
-      -- once they land (the BufWritePost of that write advances the pipeline).
-      local function dart_save_when_dirty(buf)
-        local attempts = 0
-        local function tick()
-          if not vim.api.nvim_buf_is_valid(buf) then
+        -- the edit lands asynchronously: poll briefly, and write only once a
+        -- server edit has arrived (then BufWritePre formats before the write)
+        local function write_if_fixed(attempt)
+          if not vim.api.nvim_buf_is_valid(buf) or not pending[buf] then
             return
           end
-          if vim.bo[buf].modified then
+          if fix_landed[buf] and fix_landed[buf] >= requested_at then
+            pending[buf] = nil
+            internal_write[buf] = true
             vim.api.nvim_buf_call(buf, function()
               vim.cmd("silent! write")
             end)
             return
           end
-          attempts = attempts + 1
-          if attempts < 20 then
-            vim.defer_fn(tick, 200)
+          if attempt < FIX_ATTEMPTS then
+            vim.defer_fn(function()
+              write_if_fixed(attempt + 1)
+            end, FIX_POLL_MS)
+          else
+            pending[buf] = nil -- no fix came back: nothing to write
           end
         end
-        vim.defer_fn(tick, 200)
+        vim.defer_fn(function()
+          write_if_fixed(1)
+        end, FIX_POLL_MS)
       end
 
       local group = vim.api.nvim_create_augroup("user-dart", { clear = true })
@@ -145,7 +190,9 @@ return {
       vim.api.nvim_create_autocmd("BufWipeout", {
         group = group,
         callback = function(args)
-          dart_state[args.buf] = nil
+          fix_landed[args.buf] = nil
+          internal_write[args.buf] = nil
+          pending[args.buf] = nil
         end,
       })
 
@@ -154,55 +201,41 @@ return {
         pattern = "*.dart",
         callback = function(args)
           local buf = args.buf
-          if vim.bo[buf].buftype ~= "" or not dartls_attached(buf) then
+          if internal_write[buf] then
+            -- our own follow-up write: pipeline complete
+            internal_write[buf] = nil
             return
           end
-          local phase = dart_state[buf]
-          if phase == "organize" then
-            -- final internal write: pipeline complete
-            dart_state[buf] = nil
+          if pending[buf] -- one chain at a time per buffer
+            or vim.bo[buf].buftype ~= ""
+            or is_generated(vim.api.nvim_buf_get_name(buf))
+            or not dartls_attached(buf)
+          then
             return
           end
-          -- 300ms defer so the server has seen the saved version before the
-          -- next edit set is computed (avoids stale-offset edits)
-          local function step(kinds)
-            return function()
-              if not vim.api.nvim_buf_is_valid(buf) then
-                return
-              end
-              dart_action(buf, kinds)
-              dart_save_when_dirty(buf)
+          -- small defer so the server has seen the saved version before the
+          -- fixes are computed (avoids stale-offset edits)
+          vim.defer_fn(function()
+            if vim.api.nvim_buf_is_valid(buf) and not pending[buf] then
+              request_fix_all(buf)
             end
-          end
-          if phase == "fix_all" then
-            dart_state[buf] = "organize"
-            vim.defer_fn(step({ "source.organizeImports" }), 300)
-          else
-            dart_state[buf] = "fix_all"
-            vim.defer_fn(step({ "source.fixAll" }), 300)
-          end
+          end, 300)
         end,
       })
 
     end,
   },
 
-  -- 3. conform's dart_format also resolves from PATH
+  -- 3. no conform formatter for dart: dartls already provides
+  -- textDocument/formatting, so LazyVim formats every save through the LSP
+  -- (no dart_format temp file next to the source, no extra dart process).
+  -- LazyVim's dart extra registers dart_format, and list-valued opts merge,
+  -- so this needs an opts function that nils the entry out.
   {
     "stevearc/conform.nvim",
-    opts = {
-      formatters = {
-        dart_format = {
-          command = function()
-            local root = vim.fs.root(0, { ".fvm", "pubspec.yaml" })
-            local sdk = root and vim.fs.joinpath(root, ".fvm", "flutter_sdk")
-            if sdk and vim.fn.executable(sdk .. "/bin/dart") == 1 then
-              return sdk .. "/bin/dart"
-            end
-            return "dart"
-          end,
-        },
-      },
-    },
+    opts = function(_, opts)
+      opts.formatters_by_ft = opts.formatters_by_ft or {}
+      opts.formatters_by_ft.dart = nil
+    end,
   },
 }
