@@ -91,6 +91,28 @@ vim.api.nvim_create_autocmd("User", {
     map("n", "[d", call("editor.action.marker.prev"), { desc = "Prev Diagnostic (VS Code)" })
     map("n", "]q", call("editor.action.marker.nextInFiles"), { desc = "Next Problem in Files (VS Code)" })
     map("n", "[q", call("editor.action.marker.prevInFiles"), { desc = "Prev Problem in Files (VS Code)" })
+
+    -- Buffer lifecycle is owned by VS Code in this mode (one nvim buffer per
+    -- TextDocument, no :bd/:bnext aliasing in the extension), so LazyVim's raw
+    -- nvim buffer commands (:bd, :bnext, :e #, Snacks.bufdelete) only mutate
+    -- hidden nvim state and never move VS Code tabs. Route them to editor
+    -- commands. (bufferline.nvim is excluded by the vscode extra, so its
+    -- <leader>b* keys never load here either.)
+    local buffers = {
+      { "[b", "Prev Buffer (VS Code)", "workbench.action.previousEditor" },
+      { "]b", "Next Buffer (VS Code)", "workbench.action.nextEditor" },
+      { "<leader>bb", "Switch to Other Buffer (VS Code)", "workbench.action.showAllEditorsByMostRecentlyUsed" },
+      { "<leader>`", "Switch to Other Buffer (VS Code)", "workbench.action.showAllEditorsByMostRecentlyUsed" },
+      { "<leader>bd", "Delete Buffer (VS Code)", "workbench.action.closeActiveEditor" },
+      { "<leader>bD", "Delete Buffer and Window (VS Code)", "workbench.action.closeActiveEditor" },
+      { "<leader>bo", "Delete Other Buffers (VS Code)", "workbench.action.closeOtherEditors" },
+      { "<leader>bi", "Delete Invisible Buffers (VS Code)", "workbench.action.closeUnmodifiedEditors" },
+      { "<leader>br", "Delete Buffers to the Right (VS Code)", "workbench.action.closeEditorsToTheRight" },
+      { "<leader>bl", "Delete Buffers to the Left (VS Code)", "workbench.action.closeEditorsToTheLeft" },
+    }
+    for _, b in ipairs(buffers) do
+      map("n", b[1], call(b[3]), { desc = b[2] })
+    end
   end,
 })
 
